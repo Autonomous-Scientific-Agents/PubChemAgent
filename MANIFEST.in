@@ -1,0 +1,19 @@
+include README.md
+include LICENSE
+include pyproject.toml
+include env.example
+include streamlit_app.py
+include example.py
+
+recursive-include pubchem_agent *.py
+recursive-include pubchem_agent *.typed
+recursive-include tests *.py
+recursive-include external *.py
+
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.pyd
+global-exclude __pycache__
+global-exclude .pytest_cache
+global-exclude .coverage
+global-exclude .mypy_cache 

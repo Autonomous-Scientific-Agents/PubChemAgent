@@ -10,8 +10,21 @@ import os
 import sys
 from typing import Optional
 
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+from rich.prompt import Prompt
+from rich.status import Status
+from rich.columns import Columns
+from rich.rule import Rule
+from rich import box
+
 from .agent import create_agent
 from .config import get_config_manager
+
+# Initialize rich console
+console = Console()
 
 
 def check_configuration(config_path: Optional[str] = None) -> bool:
@@ -21,25 +34,43 @@ def check_configuration(config_path: Optional[str] = None) -> bool:
         available_providers = config_manager.get_available_providers()
 
         if not available_providers:
-            print("❌ No providers configured with valid API keys")
-            print("\nPlease configure at least one provider in config.toml:")
-            print("1. Create a config.toml file (see config.toml for example)")
-            print("2. Set the api_key for your desired provider:")
-            print("   - OpenAI: Set openai.api_key")
-            print("   - Google Gemini: Set gemini.api_key")
-            print("   - Anthropic Claude: Set claude.api_key")
-            print(
-                f"\nConfig file location: {config_manager.config_path or 'not found'}"
+            error_panel = Panel(
+                "[red]No providers configured with valid API keys[/red]\n\n"
+                "Please configure at least one provider in config.toml:\n"
+                "1. Create a config.toml file (see config.toml for example)\n"
+                "2. Set the api_key for your desired provider:\n"
+                "   • [blue]OpenAI[/blue]: Set openai.api_key\n"
+                "   • [green]Google Gemini[/green]: Set gemini.api_key\n"
+                "   • [purple]Anthropic Claude[/purple]: Set claude.api_key\n\n"
+                f"Config file location: [dim]{config_manager.config_path or 'not found'}[/dim]",
+                title="❌ Configuration Error",
+                border_style="red",
             )
+            console.print(error_panel)
             return False
 
-        print(f"✅ Available providers: {', '.join(available_providers)}")
+        # Create a table for available providers
+        provider_table = Table(title="Available Providers", box=box.ROUNDED)
+        provider_table.add_column("Provider", style="cyan")
+        provider_table.add_column("Status", justify="center")
+
+        for provider in available_providers:
+            status = "✅ [green]Ready[/green]"
+            provider_table.add_row(provider.title(), status)
+
+        console.print(provider_table)
+
         if config_manager.config_path:
-            print(f"✅ Using config file: {config_manager.config_path}")
+            console.print(
+                f"✅ Using config file: [blue]{config_manager.config_path}[/blue]"
+            )
         return True
 
     except Exception as e:
-        print(f"❌ Configuration error: {e}")
+        error_panel = Panel(
+            f"[red]{str(e)}[/red]", title="❌ Configuration Error", border_style="red"
+        )
+        console.print(error_panel)
         return False
 
 
@@ -59,19 +90,32 @@ def single_query(
             provider_config = config_manager.get_provider_config(provider)
             model = provider_config.get("model")
 
-        print(f"🧪 Query: {query}")
-        print(f"🤖 Using: {provider.title()} {model}")
-        print("🔍 Searching PubChem database...")
+        # Create query info panel
+        query_panel = Panel(
+            f"[bold blue]Query:[/bold blue] {query}\n"
+            f"[bold green]Provider:[/bold green] {provider.title()}\n"
+            f"[bold yellow]Model:[/bold yellow] {model}",
+            title="🧪 PubChemAgent Query",
+            border_style="blue",
+        )
+        console.print(query_panel)
 
         agent = create_agent(provider=provider, model=model, config_path=config_path)
-        response = agent.query(query)
 
-        print("\n📋 Response:")
-        print("-" * 50)
-        print(response)
+        with Status("[bold green]Searching PubChem database...", spinner="dots"):
+            response = agent.query(query)
+
+        # Display response in a styled panel
+        response_panel = Panel(
+            response, title="📋 Response", border_style="green", padding=(1, 2)
+        )
+        console.print(response_panel)
 
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
+        error_panel = Panel(
+            f"[red]{str(e)}[/red]", title="❌ Error", border_style="red"
+        )
+        console.print(error_panel)
         sys.exit(1)
 
 
@@ -91,28 +135,34 @@ def interactive_mode(
             provider_config = config_manager.get_provider_config(provider)
             model = provider_config.get("model")
 
-        print("🧪 PubChemAgent - Interactive Mode")
-        print("=" * 50)
-        print("Ask questions about chemical compounds in natural language.")
-        print(f"🤖 Using: {provider.title()} {model}")
-        print("Type 'help' for examples, 'quit' to exit.")
-        print()
+        # Welcome header
+        welcome_text = Text("PubChemAgent - Interactive Mode", style="bold blue")
+        console.print(Panel(welcome_text, padding=(1, 2)))
+
+        console.print(
+            "[dim]Ask questions about chemical compounds in natural language.[/dim]"
+        )
+        console.print(f"[bold green]Provider:[/bold green] {provider.title()}")
+        console.print(f"[bold yellow]Model:[/bold yellow] {model}")
+        console.print("[dim]Type 'help' for examples, 'quit' to exit.[/dim]\n")
 
         agent = create_agent(provider=provider, model=model, config_path=config_path)
 
         # Show model info
         model_info = agent.get_model_info()
-        print(f"✅ Agent loaded successfully! Model: {model_info['model']}")
+        console.print(
+            f"✅ [green]Agent loaded successfully![/green] Model: [blue]{model_info['model']}[/blue]\n"
+        )
 
         while True:
             try:
-                query = input("\n🧪 > ").strip()
+                query = Prompt.ask("\n[bold cyan]🧪[/bold cyan]", default="").strip()
 
                 if not query:
                     continue
 
                 if query.lower() in ["quit", "exit", "q"]:
-                    print("👋 Goodbye!")
+                    console.print("[bold yellow]👋 Goodbye![/bold yellow]")
                     break
 
                 if query.lower() == "help":
@@ -123,23 +173,28 @@ def interactive_mode(
                     show_config(agent)
                     continue
 
-                print("🔍 Searching...")
-                response = agent.query(query)
-                print(f"\n📋 {response}")
+                with Status("[bold green]Searching...", spinner="dots"):
+                    response = agent.query(query)
+
+                response_panel = Panel(
+                    response, title="📋 Response", border_style="green", padding=(1, 1)
+                )
+                console.print(response_panel)
 
             except KeyboardInterrupt:
-                print("\n👋 Goodbye!")
+                console.print("\n[bold yellow]👋 Goodbye![/bold yellow]")
                 break
 
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
+        error_panel = Panel(
+            f"[red]{str(e)}[/red]", title="❌ Error", border_style="red"
+        )
+        console.print(error_panel)
         sys.exit(1)
 
 
 def show_help() -> None:
-    """Show help information"""
-    print("\n📚 Help - Example Queries:")
-    print("-" * 30)
+    """Show help information with rich formatting"""
     examples = [
         "What is the molecular weight of aspirin?",
         "Find information about caffeine",
@@ -153,36 +208,54 @@ def show_help() -> None:
         "Find the InChI for paracetamol",
     ]
 
-    for i, example in enumerate(examples, 1):
-        print(f"{i:2d}. {example}")
+    # Create examples table
+    examples_table = Table(title="📚 Example Queries", box=box.ROUNDED)
+    examples_table.add_column("#", style="dim", width=3)
+    examples_table.add_column("Query", style="cyan")
 
-    print("\n📋 Additional Commands:")
-    print("- 'config' - Show current configuration")
-    print("- 'help' - Show this help message")
-    print("- 'quit' or 'exit' - Exit interactive mode")
+    for i, example in enumerate(examples, 1):
+        examples_table.add_row(str(i), example)
+
+    console.print(examples_table)
+
+    # Commands panel
+    commands_panel = Panel(
+        "[bold blue]config[/bold blue] - Show current configuration\n"
+        "[bold blue]help[/bold blue] - Show this help message\n"
+        "[bold blue]quit[/bold blue] or [bold blue]exit[/bold blue] - Exit interactive mode",
+        title="📋 Additional Commands",
+        border_style="blue",
+    )
+    console.print(commands_panel)
 
 
 def show_config(agent):
-    """Show current configuration"""
-    print("\n⚙️ Current Configuration:")
-    print("-" * 30)
-
+    """Show current configuration with rich formatting"""
     config = agent.get_config()
     model_info = agent.get_model_info()
 
-    print(f"Provider: {config['provider']}")
-    print(f"Model: {model_info['model']}")
-    print(f"Temperature: {model_info['temperature']}")
-    print(f"Streaming: {model_info['streaming']}")
-    print(f"Config file: {config['config_path']}")
-    print(f"Available providers: {', '.join(config['available_providers'])}")
-    print(f"Default provider: {config['default_provider']}")
+    # Create configuration table
+    config_table = Table(title="⚙️ Current Configuration", box=box.ROUNDED)
+    config_table.add_column("Setting", style="cyan", width=20)
+    config_table.add_column("Value", style="green")
+
+    config_table.add_row("Provider", config["provider"])
+    config_table.add_row("Model", model_info["model"])
+    config_table.add_row("Temperature", str(model_info["temperature"]))
+    config_table.add_row("Streaming", str(model_info["streaming"]))
+    config_table.add_row("Config File", config["config_path"] or "Not found")
+    config_table.add_row(
+        "Available Providers", ", ".join(config["available_providers"])
+    )
+    config_table.add_row("Default Provider", config["default_provider"])
+
+    console.print(config_table)
 
 
 def show_examples(
     provider: str = None, model: str = None, config_path: str = None
 ) -> None:
-    """Show example queries and their responses"""
+    """Show example queries and their responses with rich formatting"""
     try:
         config_manager = get_config_manager(config_path)
 
@@ -195,9 +268,14 @@ def show_examples(
             provider_config = config_manager.get_provider_config(provider)
             model = provider_config.get("model")
 
-        print("🧪 PubChemAgent - Examples")
-        print("=" * 50)
-        print(f"🤖 Using: {provider.title()} {model}")
+        # Header
+        header_panel = Panel(
+            f"[bold blue]Provider:[/bold blue] {provider.title()}\n"
+            f"[bold yellow]Model:[/bold yellow] {model}",
+            title="🧪 PubChemAgent - Examples",
+            border_style="blue",
+        )
+        console.print(header_panel)
 
         examples = [
             "What is the molecular weight of water?",
@@ -208,39 +286,64 @@ def show_examples(
         agent = create_agent(provider=provider, model=model, config_path=config_path)
 
         for i, query in enumerate(examples, 1):
-            print(f"\n{i}. Query: {query}")
-            print("-" * 40)
+            console.print(f"\n[bold cyan]{i}. Query:[/bold cyan] {query}")
+            console.print(Rule(style="dim"))
 
             try:
-                response = agent.query(query)
-                print(f"Response: {response}")
+                with Status(f"[bold green]Processing query {i}...", spinner="dots"):
+                    response = agent.query(query)
+
+                response_panel = Panel(
+                    response,
+                    title=f"Response {i}",
+                    border_style="green",
+                    padding=(1, 1),
+                )
+                console.print(response_panel)
 
             except Exception as e:
-                print(f"Error: {str(e)}")
+                error_panel = Panel(
+                    f"[red]{str(e)}[/red]",
+                    title=f"❌ Error in Query {i}",
+                    border_style="red",
+                )
+                console.print(error_panel)
 
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
+        error_panel = Panel(
+            f"[red]{str(e)}[/red]", title="❌ Error", border_style="red"
+        )
+        console.print(error_panel)
         sys.exit(1)
 
 
 def create_sample_config(path: str = None) -> None:
-    """Create a sample configuration file"""
+    """Create a sample configuration file with rich feedback"""
     if not path:
         path = os.path.join(os.getcwd(), "config.toml")
 
     try:
         config_manager = get_config_manager()
         config_manager.create_sample_config(path)
-        print(f"✅ Sample configuration created at: {path}")
-        print("📝 Please edit the file and add your API keys")
+
+        success_panel = Panel(
+            f"[green]Sample configuration created at:[/green]\n[blue]{path}[/blue]\n\n"
+            "[yellow]📝 Please edit the file and add your API keys[/yellow]",
+            title="✅ Config Created",
+            border_style="green",
+        )
+        console.print(success_panel)
 
     except Exception as e:
-        print(f"❌ Error creating config file: {e}")
+        error_panel = Panel(
+            f"[red]{str(e)}[/red]", title="❌ Error Creating Config", border_style="red"
+        )
+        console.print(error_panel)
         sys.exit(1)
 
 
 def main() -> None:
-    """Main CLI function"""
+    """Main CLI function with rich help formatting"""
     parser = argparse.ArgumentParser(
         description="PubChemAgent - Natural Language Access to PubChem Database",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -318,7 +421,11 @@ Supported Providers:
 
     # Check configuration
     if not check_configuration(args.config):
-        print("\n💡 Tip: Use --create-config to create a sample configuration file")
+        tip_panel = Panel(
+            "[yellow]💡 Tip: Use --create-config to create a sample configuration file[/yellow]",
+            border_style="yellow",
+        )
+        console.print(tip_panel)
         sys.exit(1)
 
     # Handle different modes

@@ -145,6 +145,13 @@ This hybrid approach provides maximum flexibility - you can use config files for
 
 ### Command Line Interface
 
+PubChemAgent features a modern, visually-enhanced CLI powered by the [Rich](https://github.com/Textualize/rich) library, providing:
+- 🎨 **Beautiful formatted output** with colors and styling
+- 📊 **Structured tables** for configuration and provider status  
+- 🎯 **Progress indicators** for long-running queries
+- ⚡ **Interactive prompts** with improved user experience
+- 🔍 **Organized panels** for responses and error messages
+
 ```bash
 # Interactive mode (uses default provider from config)
 pubchem-agent
